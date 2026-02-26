@@ -1,12 +1,9 @@
-import os
-import psycopg2
-from psycopg2.extras import RealDictCursor
-
+import mysql.connector
 
 def get_connection():
-    database_url = os.environ.get("DATABASE_URL")
-
-    return psycopg2.connect(
-        database_url,
-        cursor_factory=RealDictCursor
+    return mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="ava@123",
+        database="attendance_db"
     )

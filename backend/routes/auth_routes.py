@@ -4,35 +4,27 @@ from database.db_connection import get_connection
 auth_bp = Blueprint("auth", __name__)
 
 
-
-
 @auth_bp.route("/login", methods=["POST"])
 def login():
-
     try:
-        print("LOGIN HIT")
-
         data = request.get_json()
-        print("DATA:", data)
+
+        if not data:
+            return jsonify({"error": "No JSON data"}), 400
 
         email = data.get("email")
         password = data.get("password")
 
-        print("EMAIL:", email)
+        if not email or not password:
+            return jsonify({"error": "Missing fields"}), 400
 
         db = get_connection()
-        print("DB:", db)
+        cursor = db.cursor(dictionary=True)  # ✅ IMPORTANT FIX
 
-        cursor = db.cursor()
-        print("CURSOR OK")
-
-        query = "SELECT * FROM users WHERE email=%s AND password=%s"
-
+        query = "SELECT user_id, role, student_id FROM users WHERE email=%s AND password=%s"
         cursor.execute(query, (email, password))
-        print("QUERY OK")
 
         user = cursor.fetchone()
-        print("USER:", user)
 
         cursor.close()
         db.close()
@@ -47,8 +39,4 @@ def login():
         }), 200
 
     except Exception as e:
-        print("LOGIN ERROR:", e)
         return jsonify({"error": str(e)}), 500
-
-
-   

@@ -18,169 +18,62 @@ def mark_attendance():
     if not data:
         return jsonify({"error": "No JSON data"}), 400
 
-
     student_id = data.get("student_id")
     status = data.get("status")
-
 
     if not student_id or not status:
         return jsonify({"error": "Missing fields"}), 400
 
-
-    # Get Client IP
-    student_ip = request.remote_addr
-
-
-    # TEMP: Allow localhost for testing
-    if student_ip == "127.0.0.1":
-        student_ip = "192.168.2.10"
-
-
-    db = None
-    cursor = None
-
-
     try:
-
         db = get_connection()
         cursor = db.cursor(dictionary=True)
 
-
-        # Auto close expired sessions
-        cursor.execute(
-            """
-            UPDATE sessions_new
-            SET status='INACTIVE'
-            WHERE status='ACTIVE'
-            AND end_time < %s
-            """,
-            (datetime.now(),)
-        )
-
-        db.commit()
-
-
-        # ---------------------------------
-        # Get Active Session
-        # ---------------------------------
-
-        now = datetime.now()
-
-        cursor.execute(
-            """
-            UPDATE sessions_new
-            SET status='INACTIVE'
-            WHERE status='ACTIVE'
-            AND end_time < %s
-            """,
-            (now,)
-        )
-
-        db.commit()
-
-
-        # Get valid active session
-        cursor.execute(
-            """
+        # Get active session (TIME + NOT CLOSED)
+        cursor.execute("""
             SELECT *
             FROM sessions_new
-            WHERE status='ACTIVE'
-            AND start_time <= NOW()
-            AND end_time >= NOW()
+            WHERE NOW() BETWEEN start_time AND end_time
+              AND is_closed = 0
             ORDER BY start_time DESC
             LIMIT 1
-            """
-        )
+        """)
 
         session = cursor.fetchone()
 
         if not session:
             return jsonify({"error": "No active session"}), 403
 
-
         session_id = session["session_id"]
 
-
-        # ---------------------------------
-        # Check If Already Marked
-        # ---------------------------------
-        cursor.execute(
-            """
+        # Check duplicate attendance
+        cursor.execute("""
             SELECT 1
             FROM attendance_new
             WHERE student_id=%s AND session_id=%s
-            """,
-            (student_id, session_id)
-        )
+        """, (student_id, session_id))
 
         if cursor.fetchone():
             return jsonify({"error": "already_marked"}), 409
 
-
-        # ---------------------------------
-        # Get Classroom Network
-        # ---------------------------------
-        cursor.execute(
-            "SELECT ip_range FROM classrooms WHERE classroom_id=%s",
-            (session["classroom_id"],)
-        )
-
-        classroom = cursor.fetchone()
-
-        if not classroom:
-            return jsonify({"error": "Classroom not found"}), 404
-
-
-        allowed_range = classroom["ip_range"]
-
-
-        # ---------------------------------
-        # IP Validation
-        # ---------------------------------
-        network = ipaddress.ip_network(allowed_range)
-        ip = ipaddress.ip_address(student_ip)
-
-        if ip not in network:
-            return jsonify({"error": "Not in classroom network"}), 403
-
-
-        # ---------------------------------
-        # Insert Attendance
-        # ---------------------------------
-        cursor.execute(
-            """
+        # Insert attendance
+        cursor.execute("""
             INSERT INTO attendance_new
             (student_id, session_id, status)
             VALUES (%s, %s, %s)
-            """,
-            (student_id, session_id, status)
-        )
+        """, (student_id, session_id, status))
 
         db.commit()
 
+        cursor.close()
+        db.close()
 
         return jsonify({
             "message": "success",
             "session_id": session_id
-        })
-
+        }), 200
 
     except Exception as e:
-
-        if db:
-            db.rollback()
-
         return jsonify({"error": str(e)}), 500
-
-
-    finally:
-
-        if cursor:
-            cursor.close()
-
-        if db:
-            db.close()
-
 
 
 # ---------------------------------
